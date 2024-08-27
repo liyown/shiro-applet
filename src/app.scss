@@ -1,0 +1,12 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+//@import 'taro-parse/dist/style/main.scss';
+
+.h5-span {
+  display: inline;
+}
+// 不使用 sass 就这么写
+// @tailwind base;
+// @tailwind components;
+// @tailwind utilities;

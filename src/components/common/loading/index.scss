@@ -1,0 +1,23 @@
+.loader-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+.bouncing-ball {
+  width: 20px;
+  height: 20px;
+  background-color: #ffb9b9;
+  border-radius: 50%;
+  animation: bounce 0.3s infinite alternate;
+}
+
+@keyframes bounce {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-50px);
+  }
+}

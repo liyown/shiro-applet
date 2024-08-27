@@ -1,0 +1,25 @@
+.frosted-glass {
+  width: 300px;
+  height: 200px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.3); /* 半透明背景色 */
+  backdrop-filter: blur(10px); /* 背景模糊效果 */
+  -webkit-backdrop-filter: blur(10px); /* 兼容性处理 */
+  border-radius: 15px; /* 圆角 */
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* 阴影效果 */
+  color: #fff;
+  font-size: 16px;
+}
+
+//.noise{
+//  position: fixed;
+//  inset: 0;
+//  content: '';
+//  opacity: 0.04;
+//  background-repeat: repeat;
+//  /* filter: blur(3px); */
+//}
+//
+//.backgroundColor {
+//  background-color: #FFFFFFB7
+//}

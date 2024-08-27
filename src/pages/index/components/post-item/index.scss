@@ -1,0 +1,10 @@
+.frosted-glass {
+  background: rgba(255, 255, 255, 0.3); /* 半透明背景色 */
+  backdrop-filter: blur(10px); /* 背景模糊效果 */
+  -webkit-backdrop-filter: blur(10px); /* 兼容性处理 */
+  border-radius: 15px; /* 圆角 */
+  //box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* 阴影效果 */
+  // 边框
+  border: 1px solid #e1e4e8;
+  font-size: 16px;
+}
