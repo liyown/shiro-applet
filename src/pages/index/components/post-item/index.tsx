@@ -8,13 +8,16 @@ import FeHash from "~/icon/FeHash.svg";
 import Eye from "~/icon/Eye.svg";
 import { Link } from "react-router-dom";
 
-export const Posts = memo<{ data: any }>(function App({ data }) {
+export const Posts = memo<{ data: any; className?: any }>(function App({
+  data,
+  className,
+}) {
   // console.log(data);
   const displayText = RemoveMarkdown(data.text);
   const categorySlug = data.category?.slug;
   const postLink = `/posts/${categorySlug}/${data.slug}`;
   return (
-    <Link to={postLink}>
+    <Link to={postLink} className={className}>
       <View className="font-sans drop-shadow-2xl backdrop-blur-md">
         <div className="mx-2 p-4 frosted-glass  rounded-lg">
           <h1 className="text-xl font-bold text-gray-800 mb-2">{data.title}</h1>

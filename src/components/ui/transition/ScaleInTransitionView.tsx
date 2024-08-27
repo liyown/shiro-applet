@@ -1,8 +1,8 @@
 import { View } from "@tarojs/components";
-import { memo, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Taro from "@tarojs/taro";
 
-export default memo(function BottomToUpTransitionView({
+export default function ScaleInTransitionView({
   children,
   delay = 0,
   className,
@@ -17,26 +17,22 @@ export default memo(function BottomToUpTransitionView({
     const timeoutId = setTimeout(() => {
       const animationSteps = Taro.createAnimation({
         duration: 300,
-        timingFunction: "ease-out", // 采用更平滑的过渡效果
-        transformOrigin: "50% 50%",
+        timingFunction: "ease", // 平滑的过渡效果，无弹性
+        transformOrigin: "50% 50%", // 从中心缩放
         delay: delay,
       });
-      //
-      animationSteps.translateY(-6).opacity(0.8).step();
-      animationSteps.translateY(4).opacity(0.85).step();
-      animationSteps.translateY(0).opacity(0.9).step();
-      animationSteps.translateY(-2).opacity(0.95).step();
-      animationSteps.translateY(0).opacity(1).step();
+
+      // 逐渐缩放和显影
+      animationSteps.opacity(1).step(); // 最终状态：正常大小、不透明
 
       setAnimation(animationSteps.export());
-    }, 0); // 小延迟确保初始样式应用完成
+    }, 0);
 
     return () => clearTimeout(timeoutId); // 清除定时器避免内存泄漏
   }, [delay]);
 
   const initialStyle = {
-    transform: "translateY(48px)",
-    opacity: 0.001,
+    opacity: 0,
   };
 
   return (
@@ -44,4 +40,4 @@ export default memo(function BottomToUpTransitionView({
       {children}
     </View>
   );
-});
+}

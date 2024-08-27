@@ -1,290 +1,357 @@
-import { Component, PureComponent } from "react";
+import { Component } from "react";
 import Taro, { createSelectorQuery, getSystemInfoSync } from "@tarojs/taro";
 import { View, ScrollView, Block } from "@tarojs/components";
-import PropTypes from "prop-types";
+import PropTypes, { InferProps } from "prop-types";
 import { VirtualListProps, VirtualListState } from "~/../types/VirtualList";
 import { throttle, isH5 } from "~/lib/utils";
-
-type ListItem = any;
-
-class VirtualListItem extends PureComponent<{
-  item: ListItem;
-  index: number;
-  onRender: Function;
-}> {
-  shouldComponentUpdate(
-    nextProps: Readonly<{ item: ListItem; index: number; onRender: Function }>
-  ) {
-    return (
-      this.props.item !== nextProps.item || this.props.index !== nextProps.index
-    );
-  }
-
-  render() {
-    const { item, index, onRender } = this.props;
-    return onRender(item, index);
-  }
-}
 
 export default class VirtialList extends Component<
   VirtualListProps,
   VirtualListState
 > {
-  public static propTypes = {
-    list: PropTypes.array.isRequired,
-    listId: PropTypes.string,
-    listType: PropTypes.string,
-    segmentNum: PropTypes.number,
-    screenNum: PropTypes.number,
-    autoScrollTop: PropTypes.bool,
-    scrollViewProps: PropTypes.object,
-    onRender: PropTypes.func.isRequired,
-    onBottom: PropTypes.func,
-    onComplete: PropTypes.func,
-    onRenderTop: PropTypes.func,
-    onRenderBottom: PropTypes.func,
-    onGetScrollData: PropTypes.func,
-  };
-
-  public static defaultProps: VirtualListProps = {
-    list: [],
-    pageNum: 1,
-    listId: "zt-virtial-list",
-    listType: "single",
-    segmentNum: 10,
-    screenNum: 2,
-    scrollViewProps: {},
-    className: "",
-    autoScrollTop: true,
-    onRender: () => <View />,
-  };
-
-  private pageHeightArr: number[] = [];
-  private initList: ListItem[][] = [];
-  private windowHeight = 0;
-  private currentPage = Taro.getCurrentInstance();
-  private observer: IntersectionObserver | null = null;
+  public static propTypes: InferProps<VirtualListProps>;
+  public static defaultProps: VirtualListProps;
 
   constructor(props: VirtualListProps) {
     super(props);
     this.state = {
-      wholePageIndex: 0,
-      twoList: [],
-      isComplete: false,
-      innerScrollTop: 0,
-    };
+      wholePageIndex: 0, // 每一屏为一个单位，屏幕索引
+      twoList: [], // 二维数组
+      isComplete: false, // 数据是否全部加载完成
+      innerScrollTop: 0, // 记录组件内部的滚动高度
+    } as VirtualListState;
   }
 
-  componentDidMount() {
+  componentDidMount(): void {
+    const { list, listType } = this.props;
     this.getSystemInformation();
-    this.updateList(this.props.list, this.props.listType);
-  }
-
-  componentDidUpdate(prevProps: VirtualListProps) {
-    if (
-      prevProps.list !== this.props.list ||
-      prevProps.listType !== this.props.listType
-    ) {
-      this.updateList(this.props.list, this.props.listType);
+    if (listType === "single") {
+      this.formatList(list);
+    } else if (listType === "multi") {
+      this.formatMultiList(list);
     }
   }
+  UNSAFE_componentWillReceiveProps(nextProps: VirtualListProps): void {
+    const { list, listType, pageNum: oldPageNUm = 1 } = this.props;
+    if (listType === "single") {
+      // 提前把innerScrollTop置为不是0，防止列表置顶失效
+      this.setState({
+        innerScrollTop: 1,
+      });
 
-  getSystemInformation() {
+      if (JSON.stringify(nextProps.list) !== JSON.stringify(list)) {
+        this.pageHeightArr = [];
+        this.setState(
+          {
+            wholePageIndex: 0,
+            isComplete: false,
+            twoList: [],
+            innerScrollTop: 0,
+          },
+          () => {
+            if (nextProps.list?.length) {
+              this.formatList(nextProps.list);
+            } else {
+              this.handleComplete();
+            }
+          }
+        );
+      }
+    } else if (listType === "multi") {
+      const { pageNum = 1 } = nextProps;
+      if (JSON.stringify(nextProps.list) !== JSON.stringify(list)) {
+        if (pageNum < oldPageNUm && pageNum == 1) {
+          this.initList = [];
+          this.setState({
+            innerScrollTop: 1,
+          });
+          this.setState(
+            {
+              wholePageIndex: 0,
+              isComplete: false,
+              twoList: [],
+            },
+            () => {
+              if (nextProps.list?.length) {
+                this.formatMultiList(nextProps.list, pageNum);
+              } else {
+                this.handleComplete();
+              }
+            }
+          );
+          Taro.nextTick(() => {
+            this.setState({
+              innerScrollTop: 0,
+            });
+          });
+        } else {
+          this.formatMultiList(nextProps.list, pageNum);
+        }
+      } else {
+        console.log("完成");
+        this.handleComplete();
+      }
+    }
+  }
+  private pageHeightArr: number[] = []; // 用来装每一屏的高度
+  private initList: any[] = []; // 承载初始化的二维数组
+  private windowHeight = 0; // 当前屏幕的高度
+  private currentPage: any = Taro.getCurrentInstance();
+  private observer: IntersectionObserver;
+
+  getSystemInformation = (): void => {
     try {
       const res = getSystemInfoSync();
       this.windowHeight = res.windowHeight;
     } catch (err) {
       console.error(`获取系统信息失败：${err}`);
     }
+  };
+  /**
+   * 列表数据渲染完成
+   */
+  handleComplete = (): void => {
+    const { onComplete } = this.props;
+    this.setState(
+      {
+        isComplete: true,
+      },
+      () => {
+        onComplete?.();
+      }
+    );
+  };
+  /**
+   * 当list是通过服务端分页获取的时候，对list进行处理
+   * @param	list 外部list
+   * @param	pageNum 当前页码
+   */
+  formatMultiList(list: any[] = [], pageNum = 1): void {
+    const { twoList } = this.state;
+    if (!list?.length) return;
+    this.segmentList(list);
+    twoList[pageNum - 1] = this.initList[pageNum - 1];
+    this.setState(
+      {
+        twoList: [...twoList],
+        wholePageIndex: pageNum - 1,
+      },
+      () => {
+        Taro.nextTick(() => {
+          this.setHeight(list);
+        });
+      }
+    );
   }
-
-  updateList(list: ListItem[], listType: string) {
-    if (listType === "single") {
-      this.formatList(list);
-    } else if (listType === "multi") {
-      this.formatMultiList(list, this.props.pageNum);
+  /**
+   * 按规则分割list，存在私有变量initList，备用
+   */
+  segmentList(list: any[] = []): void {
+    const { segmentNum } = this.props;
+    let arr: any[] = [];
+    const _list: any[] = [];
+    list.forEach((item, index) => {
+      arr.push(item);
+      if ((index + 1) % segmentNum === 0) {
+        _list.push(arr);
+        arr = [];
+      }
+    });
+    // 将分段不足segmentNum的剩余数据装入_list
+    const restList = list.slice(_list.length * segmentNum);
+    if (restList?.length) {
+      _list.push(restList);
+      if (_list.length <= 1) {
+        // 如果数据量少，不足一个segmentNum，则触发完成回调
+        this.handleComplete();
+      }
     }
+    this.initList = _list;
   }
-
-  formatList(list: ListItem[]) {
+  /**
+   * 将列表格式化为二维
+   * @param	list 	列表
+   */
+  formatList(list: any[] = []): void {
     this.segmentList(list);
     this.setState(
       {
         twoList: this.initList.slice(0, 1),
       },
       () => {
-        Taro.nextTick(() => this.setHeight(list));
+        Taro.nextTick(() => {
+          this.setHeight(list);
+        });
       }
     );
   }
+  renderNext = (): void => {
+    const { onBottom, listType, scrollViewProps, list } = this.props;
+    if (listType === "single") {
+      const page_index = this.state.wholePageIndex + 1;
+      if (!this.initList[page_index]?.length) {
+        this.handleComplete();
 
-  formatMultiList(list: ListItem[], pageNum: number) {
-    this.segmentList(list);
-    const twoList = [...this.state.twoList];
-    twoList[pageNum - 1] = this.initList[pageNum - 1];
-    this.setState(
-      {
-        twoList,
-        wholePageIndex: pageNum - 1,
-      },
-      () => {
-        Taro.nextTick(() => this.setHeight(list));
+        return;
       }
-    );
-  }
+      onBottom?.();
 
-  segmentList(list: ListItem[]) {
-    const { segmentNum } = this.props;
-    let arr: ListItem[] = [];
-    const segmentedList: ListItem[][] = [];
-
-    list.forEach((item, index) => {
-      arr.push(item);
-      if ((index + 1) % segmentNum === 0) {
-        segmentedList.push(arr);
-        arr = [];
-      }
-    });
-
-    if (arr.length) {
-      segmentedList.push(arr);
+      this.setState(
+        {
+          wholePageIndex: page_index,
+        },
+        () => {
+          const { wholePageIndex, twoList } = this.state;
+          twoList[wholePageIndex] = this.initList[wholePageIndex];
+          this.setState(
+            {
+              twoList: [...twoList],
+            },
+            () => {
+              Taro.nextTick(() => {
+                this.setHeight(list);
+              });
+            }
+          );
+        }
+      );
+    } else if (listType === "multi") {
+      scrollViewProps?.onScrollToLower?.();
     }
-
-    if (segmentedList.length <= 1) {
-      this.handleComplete();
-    }
-
-    this.initList = segmentedList;
-  }
-
-  handleComplete() {
-    this.setState({ isComplete: true }, () => {
-      this.props.onComplete?.();
-    });
-  }
-
-  setHeight(list: ListItem[]) {
+  };
+  /**
+   * 设置每一个维度的数据渲染完成之后所占的高度
+   */
+  setHeight(list: any[] = []): void {
+    const { wholePageIndex } = this.state;
+    const { listId } = this.props;
     const query = createSelectorQuery();
-    query
-      .select(`#${this.props.listId} .wrap_${this.state.wholePageIndex}`)
-      .boundingClientRect();
+    query.select(`#${listId} .wrap_${wholePageIndex}`).boundingClientRect();
     query.exec((res) => {
-      if (list.length) {
-        this.pageHeightArr.push(res?.[0]?.height || 0);
+      // 有数据的时候才去收集高度，不然页面初始化渲染（在H5中无数据）收集到的高度是错误的
+      if (list?.length) {
+        this.pageHeightArr.push(res?.[0]?.height);
       }
     });
     this.handleObserve();
   }
-
-  handleObserve() {
+  webObserve = (): void => {
+    const { listId } = this.props;
+    const $targets = document.querySelectorAll(
+      `#${listId} .zt-main-list>taro-view-core`
+    );
+    const options = {
+      root: document.querySelector(`#${listId}`),
+      rootMargin: "500px 0px",
+      // threshold: [0.5],
+    };
+    this.observer = new IntersectionObserver(this.observerCallBack, options);
+    $targets.forEach(($item) => {
+      this.observer?.observe($item);
+    });
+  };
+  observerCallBack = (entries: IntersectionObserverEntry[]): void => {
+    const { twoList } = this.state;
+    entries.forEach((item) => {
+      const screenIndex = item.target["data-index"];
+      if (item.isIntersecting) {
+        // 如果有相交区域，则将对应的维度进行赋值
+        twoList[screenIndex] = this.initList[screenIndex];
+        this.setState({
+          twoList: [...twoList],
+        });
+      } else {
+        // 当没有与当前视口有相交区域，则将改屏的数据置为该屏的高度占位
+        twoList[screenIndex] = { height: this.pageHeightArr[screenIndex] };
+        this.setState({
+          twoList: [...twoList],
+        });
+      }
+    });
+  };
+  /**
+   * 监听可视区域
+   */
+  handleObserve = (): void => {
     if (isH5) {
       this.webObserve();
     } else {
       this.miniObserve();
     }
-  }
-
-  webObserve() {
-    const { listId } = this.props;
-    const targets = document.querySelectorAll(
-      `#${listId} .zt-main-list > taro-view-core`
-    );
-    const options = {
-      root: document.querySelector(`#${listId}`),
-      rootMargin: "500px 0px",
-    };
-    this.observer = new IntersectionObserver(this.observerCallBack, options);
-    targets.forEach((target) => this.observer?.observe(target));
-  }
-
-  miniObserve() {
-    const { listId, screenNum } = this.props;
-    const scrollHeight =
-      this.props.scrollViewProps?.style?.height || this.windowHeight;
+  };
+  /**
+   * 小程序平台监听
+   */
+  miniObserve = (): void => {
+    const { wholePageIndex } = this.state;
+    const { scrollViewProps, listId, screenNum } = this.props;
+    // 以传入的scrollView的高度为相交区域的参考边界，若没传，则默认使用屏幕高度
+    const scrollHeight = scrollViewProps?.style?.height || this.windowHeight;
     const observer = Taro.createIntersectionObserver(
       this.currentPage.page
     ).relativeToViewport({
       top: screenNum * scrollHeight,
       bottom: screenNum * scrollHeight,
     });
-    observer.observe(`#${listId} .wrap_${this.state.wholePageIndex}`, (res) => {
+    observer.observe(`#${listId} .wrap_${wholePageIndex}`, (res) => {
+      const { twoList } = this.state;
       if (res?.intersectionRatio <= 0) {
-        this.state.twoList[this.state.wholePageIndex] = {
-          height: this.pageHeightArr[this.state.wholePageIndex],
+        // 当没有与当前视口有相交区域，则将改屏的数据置为该屏的高度占位
+        twoList[wholePageIndex] = {
+          height: this.pageHeightArr[wholePageIndex],
         };
-        this.setState({ twoList: [...this.state.twoList] });
-      } else if (!this.state.twoList[this.state.wholePageIndex]?.length) {
-        this.state.twoList[this.state.wholePageIndex] =
-          this.initList[this.state.wholePageIndex];
-        this.setState({ twoList: [...this.state.twoList] });
+        this.setState({
+          twoList: [...twoList],
+        });
+      } else if (!twoList[wholePageIndex]?.length) {
+        // 如果有相交区域，则将对应的维度进行赋值
+        twoList[wholePageIndex] = this.initList[wholePageIndex];
+        this.setState({
+          twoList: [...twoList],
+        });
       }
     });
-  }
-
-  observerCallBack = (entries: IntersectionObserverEntry[]) => {
-    const twoList = [...this.state.twoList];
-    entries.forEach((entry) => {
-      const screenIndex = entry.target["data-index"];
-      if (entry.isIntersecting) {
-        twoList[screenIndex] = this.initList[screenIndex];
-      } else {
-        twoList[screenIndex] = { height: this.pageHeightArr[screenIndex] };
-      }
-    });
-    this.setState({ twoList });
   };
 
   handleScroll = throttle(
-    (event: any) => {
-      this.props.onGetScrollData?.({ [this.props.listId]: event });
+    (event: any): void => {
+      const { listId } = this.props;
+      this.props.onGetScrollData?.({
+        [`${listId}`]: event,
+      });
       this.props.scrollViewProps?.onScroll?.(event);
     },
     300,
     300
   );
 
-  renderNext = () => {
-    const { onBottom, listType, scrollViewProps, list } = this.props;
-    if (listType === "single") {
-      const nextIndex = this.state.wholePageIndex + 1;
-      if (!this.initList[nextIndex]?.length) {
-        this.handleComplete();
-        return;
-      }
-      onBottom?.();
-      this.setState({ wholePageIndex: nextIndex }, () => {
-        const twoList = [...this.state.twoList];
-        twoList[nextIndex] = this.initList[nextIndex];
-        this.setState({ twoList }, () =>
-          Taro.nextTick(() => this.setHeight(list))
-        );
-      });
-    } else if (listType === "multi") {
-      scrollViewProps?.onScrollToLower?.();
-    }
-  };
-
-  render() {
+  render(): JSX.Element {
     const { twoList, isComplete, innerScrollTop } = this.state;
     const {
       segmentNum,
       scrollViewProps,
       onRenderTop,
       onRenderBottom,
+      onRender,
       onRenderLoad,
       listId,
       className,
       autoScrollTop,
-      onRender,
     } = this.props;
 
-    const scrollStyle = { height: "100%" };
-    const scrollProps = {
-      ...scrollViewProps,
-      scrollTop:
-        autoScrollTop && innerScrollTop === 0 ? 0 : scrollViewProps?.scrollTop,
+    const scrollStyle = {
+      height: "100%",
     };
 
+    const _scrollViewProps = {
+      ...scrollViewProps,
+      scrollTop: autoScrollTop
+        ? innerScrollTop === 0
+          ? 0
+          : ""
+        : scrollViewProps?.scrollTop,
+    };
+    console.log(isComplete);
     return (
       <ScrollView
         scrollY
@@ -293,36 +360,37 @@ export default class VirtialList extends Component<
         onScrollToLower={this.renderNext}
         lowerThreshold={250}
         className={`zt-virtual-list-container ${className}`}
-        {...scrollProps}
+        {..._scrollViewProps}
         onScroll={this.handleScroll}
       >
         <View className="zt-scroll-content">
           {onRenderTop?.()}
           <View className="zt-main-list">
-            {twoList.map((item, pageIndex) => (
-              <View
-                key={pageIndex}
-                data-index={pageIndex}
-                className={`zt-wrap-item wrap_${pageIndex}`}
-              >
-                {item?.length ? (
-                  <Block>
-                    {item.map((el, index) => (
-                      <VirtualListItem
-                        key={index}
-                        item={el}
-                        index={pageIndex * segmentNum + index}
-                        onRender={onRender}
-                      />
-                    ))}
-                  </Block>
-                ) : (
-                  <View style={{ height: `${item?.height}px` }} />
-                )}
-              </View>
-            ))}
+            {twoList?.map((item, pageIndex) => {
+              return (
+                <View
+                  key={pageIndex}
+                  data-index={pageIndex}
+                  className={`zt-wrap-item wrap_${pageIndex}`}
+                >
+                  {item?.length > 0 ? (
+                    <Block>
+                      {item.map((el, index) => {
+                        return onRender?.(
+                          el,
+                          pageIndex * segmentNum + index,
+                          pageIndex
+                        );
+                      })}
+                    </Block>
+                  ) : (
+                    <View style={{ height: `${item?.height}px` }}></View>
+                  )}
+                </View>
+              );
+            })}
           </View>
-          {onRenderLoad?.() && (
+          {onRenderLoad?.() && !isComplete && (
             <View className="zt-loading-text">{onRenderLoad()}</View>
           )}
           {isComplete && onRenderBottom?.()}
@@ -331,3 +399,34 @@ export default class VirtialList extends Component<
     );
   }
 }
+
+VirtialList.defaultProps = {
+  list: [],
+  pageNum: 1,
+  listId: "zt-virtial-list",
+  listType: "single",
+  segmentNum: 10,
+  screenNum: 2,
+  scrollViewProps: {},
+  className: "",
+  autoScrollTop: true,
+  onRender: function render() {
+    return <View />;
+  },
+};
+
+VirtialList.propTypes = {
+  list: PropTypes.array.isRequired,
+  listId: PropTypes.string,
+  listType: PropTypes.string,
+  segmentNum: PropTypes.number,
+  screenNum: PropTypes.number,
+  autoScrollTop: PropTypes.bool,
+  scrollViewProps: PropTypes.object,
+  onRender: PropTypes.func.isRequired,
+  onBottom: PropTypes.func,
+  onComplete: PropTypes.func,
+  onRenderTop: PropTypes.func,
+  onRenderBottom: PropTypes.func,
+  onGetScrollData: PropTypes.func,
+};

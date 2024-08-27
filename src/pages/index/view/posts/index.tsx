@@ -1,14 +1,13 @@
 import { apiClient } from "~/taro-axios/taro-axios";
-import { Posts } from "~/pages/index/components/post-item";
 import { useLoaderData } from "react-router-dom";
 import TaroVirtualList from "~/components/VirtualList";
 import { View } from "@tarojs/components";
-import BottomToUpTransitionView from "~/components/ui/transition/BottomToUpTransitionView";
 import { useState } from "react";
-import Container from "~/components/ui/container";
+import ListLoading from "~/components/ui/ListLoading";
+import ListComponentCache from "~/pages/index/components/ListCache";
 
 export async function loader() {
-  const postLists = await apiClient.post.getList(1, 10, {
+  const postLists = await apiClient.post.getList(1, 3, {
     sortBy: "created",
     sortOrder: -1,
     truncate: 100,
@@ -26,31 +25,15 @@ export default function App() {
 
   // 渲染列表Item
   const renderFunc = (item, index) => {
-    return (
-      <Container>
-        {index < 10 ? (
-          <BottomToUpTransitionView
-            key={item.id}
-            className="mb-2"
-            delay={index * 100}
-          >
-            <Posts data={item} />
-          </BottomToUpTransitionView>
-        ) : (
-          <BottomToUpTransitionView key={item.id} className="mb-2">
-            <Posts data={item} />
-          </BottomToUpTransitionView>
-        )}
-      </Container>
-    );
+    return <ListComponentCache key={item.id} data={{ item, index }} />;
   };
   const onPageScrollToLower = async () => {
-    console.log("onPageScrollToLower");
-    const newPostLists = (await apiClient.post.getList(page + 1, 10, {
+    const newPostLists = (await apiClient.post.getList(page + 1, 3, {
       sortBy: "created",
       sortOrder: -1,
       truncate: 100,
     })) as any;
+
     setPage(page + 1);
     setAllPosts([...allPosts, ...newPostLists.data.data]);
   };
@@ -62,8 +45,10 @@ export default function App() {
         listType="multi"
         list={allPosts}
         pageNum={page}
-        segmentNum={10}
+        segmentNum={3}
         onRender={renderFunc}
+        onRenderBottom={onCompleted}
+        onRenderLoad={() => <ListLoading />}
         scrollViewProps={{
           onScrollToLower: onPageScrollToLower,
           lowerThreshold: 50,
@@ -77,3 +62,10 @@ export default function App() {
   );
 }
 
+const onCompleted = () => {
+  return (
+    <View className="text-center text-gray-500 text-sm">
+      <View>已经到底了</View>
+    </View>
+  );
+};

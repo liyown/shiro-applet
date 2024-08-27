@@ -1,0 +1,26 @@
+.loader-containe-list {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100px; /* Adjust height as needed */
+}
+
+.moving-ball-list {
+  width: 20px;
+  height: 20px;
+  background-color: #ffb9b9;
+  border-radius: 50%;
+  animation: move 1s linear infinite;
+}
+
+@keyframes move {
+  0% {
+    transform: translateX(0px);
+  }
+  50% {
+    transform: translateX(50px);
+  }
+  100% {
+    transform: translateX(0px);
+  }
+}

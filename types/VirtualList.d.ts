@@ -6,6 +6,7 @@ export interface VirtualListProps extends BaseComponent {
   /**
    * 列表数据
    */
+  // @ts-ignore
   list: Array;
   /**
    * 虚拟列表唯一id（防止同一个页面有多个虚拟列表导致渲染错乱）
@@ -76,9 +77,11 @@ export interface VirtualListState {
    * 每一个维度为一个单位，维度索引
    */
   wholePageIndex: number;
+
   /**
    * 二维数组
    */
+  // @ts-ignore
   twoList: Array;
   /**
    * 数据是否全部加载完成
